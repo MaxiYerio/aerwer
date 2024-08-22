@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión de Artículos - Revista Interactiva</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h1>Gestión de Artículos - Revista Interactiva</h1>
+        <form id="form-articulo">
+            <div class="form-group">
+                <label for="tituloprin">Título del Artículo:</label>
+                <input type="text" class="form-control" id="tituloprin" required>
+            </div>
+            <div class="form-group">
+                <label for="contenido">Contenido:</label>
+                <textarea class="form-control" id="contenido" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="imagen">Imagen:</label>
+                <input type="file" class="form-control-file" id="imagen" accept="image/*">
+            </div>
+            <button type="submit" class="btn btn-primary">Agregar Artículo</button>
+            <button type="button" class="btn btn-secondary" id="btn-editar" style="display: none;">Guardar Cambios</button>
+        </form>
+
+        <hr>
+        <h2>Lista de Artículos</h2>
+        <div id="lista-articulos"></div>
+    </div>
+
+    <script>
+        let editando = false;
+        let keyArticulo = null;
+        let imagenBase64 = "";
+
+        // Convierte la imagen seleccionada a base64
+        document.getElementById('imagen').addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = function() {
+                    imagenBase64 = reader.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Función para obtener los artículos de la API y mostrarlos
+        function obtenerArticulos() {
+            fetch('https://revistadigital-f5fd3-default-rtdb.firebaseio.com/Articulos.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('No se pudo obtener los artículos: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const listaArticulos = document.getElementById('lista-articulos');
+                    listaArticulos.innerHTML = '';
+
+                    if (!data) {
+                        console.error('No se recibieron datos válidos');
+                        return;
+                    }
+
+                    for (let key in data) {
+                        const articulo = data[key];
+
+                        if (!articulo.Noticia || !articulo.Noticia.tituloprin) {
+                            console.error('Datos del artículo incompletos:', articulo);
+                            continue;
+                        }
+
+                        const div = document.createElement('div');
+                        div.classList.add('card', 'mb-3');
+
+                        const cardBody = document.createElement('div');
+                        cardBody.classList.add('card-body');
+
+                        const titulo = document.createElement('h5');
+                        titulo.classList.add('card-title');
+                        titulo.textContent = articulo.Noticia.tituloprin;
+
+                        const contenido = document.createElement('p');
+                        contenido.classList.add('card-text');
+                        contenido.textContent = articulo.Noticia.contenido;
+
+                        const img = document.createElement('img');
+                        img.classList.add('card-img-top', 'mb-3');
+                        img.src = articulo.Noticia.imagen || '';
+                        img.alt = 'Imagen del artículo';
+
+                        const btnEditar = document.createElement('button');
+                        btnEditar.classList.add('btn', 'btn-warning', 'mr-2');
+                        btnEditar.textContent = 'Editar';
+                        btnEditar.addEventListener('click', () => {
+                            document.getElementById('tituloprin').value = articulo.Noticia.tituloprin;
+                            document.getElementById('contenido').value = articulo.Noticia.contenido;
+                            imagenBase64 = articulo.Noticia.imagen || ''; // Al editar, mantenemos la imagen base64
+                            editando = true;
+                            keyArticulo = key;
+                            document.getElementById('btn-editar').style.display = 'inline';
+                        });
+
+                        const btnEliminar = document.createElement('button');
+                        btnEliminar.classList.add('btn', 'btn-danger');
+                        btnEliminar.textContent = 'Eliminar';
+                        btnEliminar.addEventListener('click', () => {
+                            eliminarArticulo(key);
+                        });
+
+                        cardBody.appendChild(titulo);
+                        cardBody.appendChild(contenido);
+                        cardBody.appendChild(img);
+                        cardBody.appendChild(btnEditar);
+                        cardBody.appendChild(btnEliminar);
+                        div.appendChild(cardBody);
+                        listaArticulos.appendChild(div);
+                    }
+                })
+                .catch(error => console.error('Error al obtener artículos:', error));
+        }
+
+        // Función para agregar o editar un artículo
+        document.getElementById('form-articulo').addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const titulo = document.getElementById('tituloprin').value;
+            const contenido = document.getElementById('contenido').value;
+
+            const data = {
+                Noticia: {
+                    tituloprin: titulo,
+                    contenido: contenido,
+                    imagen: imagenBase64 // Usamos la imagen en base64
+                }
+            };
+
+            if (editando) {
+                // Editar artículo existente
+                fetch(`https://revistadigital-f5fd3-default-rtdb.firebaseio.com/Articulos/${keyArticulo}.json`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                    .then(response => response.json())
+                    .then(responseData => {
+                        console.log('Respuesta al editar:', responseData);
+                        alert('Artículo actualizado correctamente');
+                        obtenerArticulos();
+                        editando = false;
+                        keyArticulo = null;
+                        document.getElementById('btn-editar').style.display = 'none';
+                        imagenBase64 = ""; // Reinicia la imagen base64
+                    })
+                    .catch(error => console.error('Error al editar:', error));
+            } else {
+                // Agregar nuevo artículo
+                fetch('https://revistadigital-f5fd3-default-rtdb.firebaseio.com/Articulos.json', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                    .then(response => response.json())
+                    .then(responseData => {
+                        console.log('Respuesta al agregar:', responseData);
+                        alert('Artículo agregado correctamente');
+                        obtenerArticulos();
+                        imagenBase64 = ""; // Reinicia la imagen base64
+                    })
+                    .catch(error => console.error('Error al agregar:', error));
+            }
+
+            document.getElementById('form-articulo').reset();
+        });
+
+        // Función para eliminar un artículo
+        function eliminarArticulo(key) {
+            fetch(`https://revistadigital-f5fd3-default-rtdb.firebaseio.com/Articulos/${key}.json`, {
+                method: 'DELETE'
+            })
+                .then(() => {
+                    alert('Artículo eliminado correctamente');
+                    obtenerArticulos();
+                })
+                .catch(error => console.error('Error al eliminar:', error));
+        }
+
+        // Cargar los artículos al cargar la página
+        obtenerArticulos();
+    </script>
+</body>
+
+</html>
